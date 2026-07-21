@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from functools import cached_property
 from pathlib import Path
+from urllib.parse import urljoin
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ALLOWED_SOURCE_PROVIDERS = frozenset({"manual", "telethon", "tgstat"})
 
 
 class Settings(BaseSettings):
@@ -15,16 +18,30 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    telegram_api_id: int
-    telegram_api_hash: str
-    telegram_session: str
     bot_token: str
     admin_ids: str
     notify_chat_id: int | None = None
 
-    # Sources from the file are loaded first. CHAT_SOURCES can append custom values.
+    # Cheap-by-default mode: Telemetr/TGStat alerts are forwarded to the bot manually.
+    source_providers: str = "manual"
+
+    # Optional MTProto/Telethon provider.
+    telegram_api_id: int | None = None
+    telegram_api_hash: str | None = None
+    telegram_session: str | None = None
     chat_sources_file: Path | None = Path("config/sources.txt")
     chat_sources: str = ""
+
+    # Optional TGStat Callback provider.
+    tgstat_token: str | None = None
+    tgstat_webhook_secret: str | None = None
+    tgstat_verify_code: str | None = None
+    tgstat_query_file: Path = Path("config/lead_query.tgstat")
+    tgstat_subscription_id: int | None = None
+    tgstat_queue_size: int = Field(default=1000, ge=10, le=100_000)
+    public_base_url: str | None = None
+    web_host: str = "0.0.0.0"
+    web_port: int = Field(default=8080, ge=1, le=65_535)
 
     database_url: str = "sqlite+aiosqlite:///./parcertg.db"
     min_lead_score: int = Field(default=65, ge=0, le=100)
@@ -32,13 +49,65 @@ class Settings(BaseSettings):
     dedup_similarity: int = Field(default=92, ge=50, le=100)
     log_level: str = "INFO"
 
-    @field_validator("telegram_api_hash", "telegram_session", "bot_token", "admin_ids")
+    @field_validator(
+        "bot_token",
+        "admin_ids",
+        "telegram_api_hash",
+        "telegram_session",
+        "tgstat_token",
+        "tgstat_webhook_secret",
+        "tgstat_verify_code",
+        "public_base_url",
+        mode="before",
+    )
     @classmethod
-    def must_not_be_blank(cls, value: str) -> str:
-        value = value.strip()
+    def strip_optional_strings(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        return stripped or None
+
+    @field_validator("bot_token", "admin_ids")
+    @classmethod
+    def required_strings_must_not_be_blank(cls, value: str | None) -> str:
         if not value:
             raise ValueError("must not be blank")
         return value
+
+    @model_validator(mode="after")
+    def validate_provider_configuration(self) -> Settings:
+        providers = self.parsed_source_providers
+        unknown = providers - ALLOWED_SOURCE_PROVIDERS
+        if unknown:
+            raise ValueError(
+                "Unknown SOURCE_PROVIDERS values: " + ", ".join(sorted(unknown))
+            )
+        if "telethon" in providers:
+            missing = [
+                name
+                for name, value in (
+                    ("TELEGRAM_API_ID", self.telegram_api_id),
+                    ("TELEGRAM_API_HASH", self.telegram_api_hash),
+                    ("TELEGRAM_SESSION", self.telegram_session),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError(
+                    "Telethon provider requires: " + ", ".join(missing)
+                )
+        if "tgstat" in providers and not self.tgstat_webhook_secret:
+            raise ValueError("TGStat provider requires TGSTAT_WEBHOOK_SECRET")
+        return self
+
+    @cached_property
+    def parsed_source_providers(self) -> frozenset[str]:
+        providers = {
+            item.strip().casefold()
+            for item in self.source_providers.split(",")
+            if item.strip()
+        }
+        return frozenset(providers or {"manual"})
 
     @cached_property
     def parsed_admin_ids(self) -> frozenset[int]:
@@ -112,3 +181,16 @@ class Settings(BaseSettings):
         if self.notify_chat_id is not None:
             return self.notify_chat_id
         return next(iter(self.parsed_admin_ids))
+
+    @cached_property
+    def tgstat_callback_path(self) -> str:
+        if not self.tgstat_webhook_secret:
+            raise ValueError("TGSTAT_WEBHOOK_SECRET is not configured")
+        return f"/webhooks/tgstat/{self.tgstat_webhook_secret}"
+
+    @cached_property
+    def tgstat_callback_url(self) -> str:
+        if not self.public_base_url:
+            raise ValueError("PUBLIC_BASE_URL is not configured")
+        base = self.public_base_url.rstrip("/") + "/"
+        return urljoin(base, self.tgstat_callback_path.lstrip("/"))
