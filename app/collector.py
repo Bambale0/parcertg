@@ -18,7 +18,12 @@ logger = structlog.get_logger(__name__)
 
 
 class LeadCollector:
-    def __init__(self, settings: Settings, database: Database, notifier: Notifier) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        database: Database,
+        notifier: Notifier,
+    ) -> None:
         self.settings = settings
         self.database = database
         self.notifier = notifier
@@ -29,7 +34,11 @@ class LeadCollector:
         )
 
     @staticmethod
-    def _message_url(chat_id: int, chat_username: str | None, message_id: int) -> str | None:
+    def _message_url(
+        chat_id: int,
+        chat_username: str | None,
+        message_id: int,
+    ) -> str | None:
         if chat_username:
             return f"https://t.me/{chat_username}/{message_id}"
         raw = str(chat_id)
@@ -48,12 +57,19 @@ class LeadCollector:
         chat = await event.get_chat()
         sender = await event.get_sender()
         chat_id = int(event.chat_id)
-        chat_title = getattr(chat, "title", None) or getattr(chat, "username", None) or str(chat_id)
+        chat_title = (
+            getattr(chat, "title", None)
+            or getattr(chat, "username", None)
+            or str(chat_id)
+        )
         chat_username = getattr(chat, "username", None)
         sender_username = getattr(sender, "username", None)
         sender_name = " ".join(
             value
-            for value in (getattr(sender, "first_name", None), getattr(sender, "last_name", None))
+            for value in (
+                getattr(sender, "first_name", None),
+                getattr(sender, "last_name", None),
+            )
             if value
         ).strip() or None
 
@@ -75,7 +91,11 @@ class LeadCollector:
         if duplicate is not None:
             added = await self.database.add_source(duplicate.id, source)
             if added:
-                logger.info("duplicate_source_added", lead_id=duplicate.id, chat_id=chat_id)
+                logger.info(
+                    "duplicate_source_added",
+                    lead_id=duplicate.id,
+                    chat_id=chat_id,
+                )
             return
 
         lead = Lead(
@@ -95,13 +115,19 @@ class LeadCollector:
             return
 
         await self.notifier.send_lead(lead)
-        logger.info("hot_lead_sent", lead_id=lead.id, score=lead.score, chat_id=chat_id)
+        logger.info(
+            "hot_lead_sent",
+            lead_id=lead.id,
+            score=lead.score,
+            chat_id=chat_id,
+        )
 
     async def run(self) -> None:
         await self.client.connect()
         if not await self.client.is_user_authorized():
             raise RuntimeError(
-                "TELEGRAM_SESSION is invalid or expired. Run scripts.generate_session again."
+                "TELEGRAM_SESSION is invalid or expired. "
+                "Run scripts.generate_session again."
             )
 
         configured_sources = self.settings.parsed_chat_sources
@@ -115,7 +141,9 @@ class LeadCollector:
                 logger.exception("chat_source_unavailable", source=source)
 
         if not resolved_chats:
-            raise RuntimeError("No Telegram sources could be resolved by the Telegram account")
+            raise RuntimeError(
+                "No Telegram sources could be resolved by the Telegram account"
+            )
 
         self.client.add_event_handler(
             self._handle_message,
