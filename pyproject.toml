@@ -1,7 +1,7 @@
 [project]
 name = "parcertg"
-version = "0.1.0"
-description = "Telegram lead hunter with rule-based scoring, deduplication and instant notifications"
+version = "0.2.0"
+description = "Cost-first Telegram lead hunter with manual, TGStat and Telethon providers"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,6 +12,9 @@ dependencies = [
   "aiosqlite==0.21.0",
   "pydantic-settings==2.10.1",
   "structlog==25.4.0",
+  "fastapi==0.139.2",
+  "uvicorn==0.51.0",
+  "httpx==0.28.1",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +27,7 @@ dev = [
 [project.scripts]
 parcertg = "app.main:run"
 parcertg-session = "scripts.generate_session:main"
+parcertg-tgstat = "scripts.tgstat_setup:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -35,3 +39,13 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "scripts*"]
+exclude = ["config*", "docs*", "tests*"]
+namespaces = true
