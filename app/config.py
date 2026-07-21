@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import cached_property
+from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,7 +21,10 @@ class Settings(BaseSettings):
     bot_token: str
     admin_ids: str
     notify_chat_id: int | None = None
-    chat_sources: str
+
+    # Sources from the file are loaded first. CHAT_SOURCES can append custom values.
+    chat_sources_file: Path | None = Path("config/sources.txt")
+    chat_sources: str = ""
 
     database_url: str = "sqlite+aiosqlite:///./parcertg.db"
     min_lead_score: int = Field(default=65, ge=0, le=100)
@@ -28,9 +32,7 @@ class Settings(BaseSettings):
     dedup_similarity: int = Field(default=92, ge=50, le=100)
     log_level: str = "INFO"
 
-    @field_validator(
-        "telegram_api_hash", "telegram_session", "bot_token", "admin_ids", "chat_sources"
-    )
+    @field_validator("telegram_api_hash", "telegram_session", "bot_token", "admin_ids")
     @classmethod
     def must_not_be_blank(cls, value: str) -> str:
         value = value.strip()
@@ -40,21 +42,69 @@ class Settings(BaseSettings):
 
     @cached_property
     def parsed_admin_ids(self) -> frozenset[int]:
-        return frozenset(int(item.strip()) for item in self.admin_ids.split(",") if item.strip())
+        return frozenset(
+            int(item.strip()) for item in self.admin_ids.split(",") if item.strip()
+        )
+
+    @staticmethod
+    def _normalize_source(raw: str) -> str | int | None:
+        value = raw.strip()
+        if not value:
+            return None
+
+        normalized = value.removeprefix("https://t.me/").removeprefix("http://t.me/")
+        normalized = normalized.removeprefix("@").rstrip("/")
+        if not normalized:
+            return None
+
+        try:
+            return int(normalized)
+        except ValueError:
+            return normalized
+
+    def _file_source_values(self) -> list[str]:
+        path = self.chat_sources_file
+        if path is None or not path.exists():
+            return []
+
+        values: list[str] = []
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.split("#", maxsplit=1)[0].strip()
+            if not line:
+                continue
+            values.extend(part.strip() for part in line.split(",") if part.strip())
+        return values
 
     @cached_property
     def parsed_chat_sources(self) -> tuple[str | int, ...]:
+        raw_values = self._file_source_values()
+        raw_values.extend(
+            item.strip() for item in self.chat_sources.split(",") if item.strip()
+        )
+
         sources: list[str | int] = []
-        for raw in self.chat_sources.split(","):
-            value = raw.strip()
-            if not value:
+        seen: set[tuple[str, str]] = set()
+        for raw in raw_values:
+            source = self._normalize_source(raw)
+            if source is None:
                 continue
-            normalized = value.removeprefix("https://t.me/").removeprefix("http://t.me/")
-            normalized = normalized.removeprefix("@").rstrip("/")
-            try:
-                sources.append(int(normalized))
-            except ValueError:
-                sources.append(normalized)
+
+            key = (
+                ("id", str(source))
+                if isinstance(source, int)
+                else ("username", source.casefold())
+            )
+            if key in seen:
+                continue
+
+            seen.add(key)
+            sources.append(source)
+
+        if not sources:
+            raise ValueError(
+                "No Telegram sources configured. Fill CHAT_SOURCES or "
+                "CHAT_SOURCES_FILE."
+            )
         return tuple(sources)
 
     @cached_property
