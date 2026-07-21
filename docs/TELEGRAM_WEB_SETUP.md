@@ -1,6 +1,6 @@
 # Автономный бесплатный режим через Telegram Web
 
-Этот режим читает новые уведомления `@telemetr_notif_bot` из сохранённой
+Этот режим читает новые уведомления `@TelemetrioAlertBot` из сохранённой
 Telegram Web-сессии и передаёт их в общий `LeadProcessor`. Ручная пересылка,
 `api_id`, `api_hash` и платный Callback API не нужны.
 
@@ -10,16 +10,16 @@ Telegram Web-сессии и передаёт их в общий `LeadProcessor`
 - профиль браузера хранит активную сессию и должен считаться секретом;
 - интеграция зависит от интерфейса Telegram Web и после крупных обновлений
   интерфейса может потребовать корректировки селекторов;
-- бесплатный лимит найденных упоминаний задаётся тарифом Telemetr;
+- бесплатный лимит найденных упоминаний задаётся тарифом Telemetrio;
 - ParcerTG ничего не пишет в отслеживаемые чаты и не отвечает заказчикам сам.
 
-## 1. Настройте мониторинг Telemetr
+## 1. Настройте мониторинг Telemetrio
 
-1. Создайте одно отслеживание на сайте Telemetr.
+1. Создайте одно отслеживание на сайте Telemetrio.
 2. Используйте ключи из `config/telemetr_keywords.txt`.
 3. Используйте исключения из `config/telemetr_minus_words.txt`.
-4. В разделе мониторинга нажмите «Подключить» и прикрепите
-   `@telemetr_notif_bot` к своему Telemetr-аккаунту.
+4. В разделе мониторинга подключите Telegram-уведомления через
+   `@TelemetrioAlertBot`.
 5. Убедитесь, что тестовое уведомление появляется в этом диалоге.
 
 ## 2. Обновите `.env`
@@ -28,7 +28,7 @@ Telegram Web-сессии и передаёт их в общий `LeadProcessor`
 SOURCE_PROVIDERS=telegram_web
 
 TELEGRAM_WEB_PROFILE_DIR=/data/telegram-web
-TELEGRAM_WEB_TARGET_CHAT=telemetr_notif_bot
+TELEGRAM_WEB_TARGET_CHAT=TelemetrioAlertBot
 TELEGRAM_WEB_URL=https://web.telegram.org/k/
 TELEGRAM_WEB_POLL_SECONDS=15
 TELEGRAM_WEB_LOGIN_TIMEOUT_SECONDS=600
@@ -89,7 +89,7 @@ telegram_web_collector_started
 telegram_web_history_baselined
 ```
 
-После появления нового уведомления Telemetr:
+После появления нового уведомления Telemetrio:
 
 ```text
 telegram_web_alert_processed
