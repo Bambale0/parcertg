@@ -1,20 +1,52 @@
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from app.config import Settings
 
 
 def make_settings(**overrides: object) -> Settings:
     values: dict[str, object] = {
-        "telegram_api_id": 1,
-        "telegram_api_hash": "hash",
-        "telegram_session": "session",
+        "_env_file": None,
         "bot_token": "token",
         "admin_ids": "123",
+        "source_providers": "manual",
         "chat_sources": "",
         "chat_sources_file": None,
     }
     values.update(overrides)
     return Settings(**values)
+
+
+def test_manual_mode_does_not_require_mtproto_credentials() -> None:
+    settings = make_settings()
+
+    assert settings.parsed_source_providers == frozenset({"manual"})
+    assert settings.telegram_api_id is None
+
+
+def test_telethon_mode_requires_mtproto_credentials() -> None:
+    with pytest.raises(ValidationError, match="TELEGRAM_API_ID"):
+        make_settings(source_providers="telethon")
+
+
+def test_tgstat_mode_requires_webhook_secret() -> None:
+    with pytest.raises(ValidationError, match="TGSTAT_WEBHOOK_SECRET"):
+        make_settings(source_providers="manual,tgstat")
+
+
+def test_tgstat_callback_url_is_built_from_public_base_url() -> None:
+    settings = make_settings(
+        source_providers="manual,tgstat",
+        tgstat_webhook_secret="secret-value",
+        public_base_url="https://leads.example.com/base/",
+    )
+
+    assert (
+        settings.tgstat_callback_url
+        == "https://leads.example.com/base/webhooks/tgstat/secret-value"
+    )
 
 
 def test_default_catalog_contains_100_unique_sources() -> None:
