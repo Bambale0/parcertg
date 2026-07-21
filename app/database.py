@@ -3,7 +3,11 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import selectinload
 
 from app.dedup import similarity
@@ -93,7 +97,9 @@ class Database:
     async def stats_today(self) -> dict[str, int]:
         today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         async with self.sessions() as session:
-            total = await session.scalar(select(func.count(Lead.id)).where(Lead.created_at >= today))
+            total = await session.scalar(
+                select(func.count(Lead.id)).where(Lead.created_at >= today)
+            )
             contacted = await session.scalar(
                 select(func.count(Lead.id)).where(
                     Lead.created_at >= today,
