@@ -10,6 +10,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ALLOWED_SOURCE_PROVIDERS = frozenset(
     {"manual", "telegram_web", "telethon", "tgstat"}
 )
+LEGACY_TELEMETRIO_ALERT_BOTS = frozenset(
+    {"telemetr_notif_bot", "telemetrio_alert_bot"}
+)
 
 
 class Settings(BaseSettings):
@@ -91,6 +94,8 @@ class Settings(BaseSettings):
         normalized = value.strip().removeprefix("@")
         if not normalized:
             raise ValueError("must not be blank")
+        if normalized.casefold() in LEGACY_TELEMETRIO_ALERT_BOTS:
+            return "TelemetrioAlertBot"
         return normalized
 
     @field_validator("telegram_web_url")
