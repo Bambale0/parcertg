@@ -3,8 +3,11 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    shm_size: "1gb"
     ports:
       - "${WEB_PORT:-8080}:${WEB_PORT:-8080}"
+    volumes:
+      - telegram_web_data:/data/telegram-web
     depends_on:
       db:
         condition: service_healthy
@@ -26,3 +29,4 @@ services:
 
 volumes:
   postgres_data:
+  telegram_web_data:
