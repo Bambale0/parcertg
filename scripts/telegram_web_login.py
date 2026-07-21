@@ -69,7 +69,10 @@ async def main_async() -> None:
 
         await bot.send_message(
             settings.target_chat_id,
-            "❌ Время ожидания входа Telegram Web истекло. Запустите команду ещё раз.",
+            (
+                "❌ Время ожидания входа Telegram Web истекло. "
+                "Запустите команду ещё раз."
+            ),
         )
         raise TimeoutError("Telegram Web login timed out")
     finally:
