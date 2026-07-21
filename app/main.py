@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+import sys
+
+import structlog
+
+from app.collector import LeadCollector
+from app.config import Settings
+from app.database import Database
+from app.notifier import Notifier
+
+
+def configure_logging(level: str) -> None:
+    logging.basicConfig(
+        level=getattr(logging, level.upper(), logging.INFO),
+        format="%(message)s",
+        stream=sys.stdout,
+    )
+    structlog.configure(
+        processors=[
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.add_log_level,
+            structlog.processors.JSONRenderer(ensure_ascii=False),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(
+            getattr(logging, level.upper(), logging.INFO)
+        ),
+    )
+
+
+async def main() -> None:
+    settings = Settings()  # type: ignore[call-arg]
+    configure_logging(settings.log_level)
+
+    database = Database(settings.database_url)
+    await database.create_schema()
+    notifier = Notifier(settings, database)
+    collector = LeadCollector(settings, database, notifier)
+
+    tasks = [
+        asyncio.create_task(notifier.run(), name="notification-bot"),
+        asyncio.create_task(collector.run(), name="telegram-collector"),
+    ]
+    try:
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        for task in done:
+            exception = task.exception()
+            if exception:
+                raise exception
+        for task in pending:
+            task.cancel()
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await collector.close()
+        await notifier.close()
+        await database.close()
+
+
+def run() -> None:
+    asyncio.run(main())
+
+
+if __name__ == "__main__":
+    run()
