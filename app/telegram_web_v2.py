@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import shutil
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -374,10 +373,15 @@ class TelegramWebCollector:
         if not messages:
             self._empty_polls += 1
             if self._empty_polls == 1:
-                logger.warning("telegram_web_no_messages", **asdict(await page_state(page)))
+                state = await page_state(page)
+                logger.warning("telegram_web_no_messages", **asdict(state))
             if self._empty_polls % 4 == 0:
                 await open_target_chat(page, self.settings)
-            if self._empty_polls >= 8 and monotonic() - self._last_diagnostic_at > 300:
+            should_save_diagnostics = (
+                self._empty_polls >= 8
+                and monotonic() - self._last_diagnostic_at > 300
+            )
+            if should_save_diagnostics:
                 screenshot, state_file = await save_diagnostics(
                     page,
                     self.settings.telegram_web_profile_dir,
