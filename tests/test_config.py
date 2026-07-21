@@ -26,6 +26,18 @@ def test_manual_mode_does_not_require_mtproto_credentials() -> None:
     assert settings.telegram_api_id is None
 
 
+def test_telegram_web_mode_needs_no_mtproto_or_paid_api() -> None:
+    settings = make_settings(
+        source_providers="telegram_web",
+        telegram_web_target_chat="@telemetr_notif_bot",
+    )
+
+    assert settings.parsed_source_providers == frozenset({"telegram_web"})
+    assert settings.telegram_web_target_chat == "telemetr_notif_bot"
+    assert settings.telegram_api_id is None
+    assert settings.tgstat_token is None
+
+
 def test_telethon_mode_requires_mtproto_credentials() -> None:
     with pytest.raises(ValidationError, match="TELEGRAM_API_ID"):
         make_settings(source_providers="telethon")

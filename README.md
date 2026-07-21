@@ -1,69 +1,136 @@
 # ParcerTG — охотник за горячими лидами в Telegram
 
-ParcerTG принимает заявки из нескольких источников, локально оценивает их по прозрачным правилам, удаляет дубли и отправляет только подходящие лиды в личного Telegram-бота.
+ParcerTG принимает заявки из нескольких источников, локально оценивает их по
+прозрачным правилам, удаляет дубли и отправляет только подходящие лиды в личного
+Telegram-бота.
 
-Проект теперь запускается **без `api_id` и `api_hash`**. Самый дешёвый старт — бесплатный мониторинг Telemetrio и пересылка найденных уведомлений в ParcerTG. Когда качество лидов подтвердится, можно включить TGStat Callback или Telethon.
+Проект запускается без `api_id` и `api_hash`. Основной бесплатный режим теперь
+полностью автономный: Telemetr ищет упоминания, `@telemetr_notif_bot` присылает
+уведомления, а сохранённая Telegram Web-сессия сама забирает их в ParcerTG.
+Ручная пересылка не требуется.
 
 ## Источники
 
 | Провайдер | Стоимость старта | Как работает |
 |---|---:|---|
-| `manual` | 0 | Пересылка уведомлений Telemetrio/TGStat в бота или команда `/lead` |
-| `tgstat` | по тарифу API Callback | TGStat отправляет новые совпадения на FastAPI webhook |
-| `telethon` | 0 | Отдельный Telegram-аккаунт напрямую слушает каталог из 100 источников |
+| `telegram_web` | 0 | Chromium читает новые уведомления `@telemetr_notif_bot` |
+| `manual` | 0 | Ручная пересылка уведомлений или команда `/lead` |
+| `tgstat` | по тарифу Callback API | TGStat отправляет совпадения на FastAPI webhook |
+| `telethon` | 0 | Telegram-аккаунт напрямую слушает каталог из 100 источников |
 
-Провайдеры можно комбинировать: `SOURCE_PROVIDERS=manual,tgstat`.
+Провайдеры можно комбинировать, например:
+
+```env
+SOURCE_PROVIDERS=telegram_web,manual
+```
 
 ## Возможности
 
+- автономный бесплатный сбор уведомлений Telemetr через Telegram Web;
 - rule-based scoring от 0 до 100 без передачи сообщений в LLM;
-- приоритет Python, FastAPI, Telegram-ботов, AI-интеграций, CRM, API и автоматизации;
+- приоритет Python, FastAPI, Telegram-ботов, AI-интеграций, CRM, API и
+  автоматизации;
 - фильтрация резюме, рекламы услуг, обучения, бартера и работы «за процент»;
 - точная и fuzzy-дедупликация между разными провайдерами;
 - карточка лида с причинами оценки и ссылкой на оригинал;
 - кнопки «Взял в работу», «Не подходит» и «Спам»;
 - PostgreSQL в Docker и SQLite для локальной разработки;
-- неблокирующая очередь TGStat webhook: сервер отвечает до обработки лида;
-- готовый составной запрос TGStat, который занимает одну отслеживаемую тему;
-- каталог из 100 Telegram-чатов и каналов для опционального Telethon-режима.
+- сохранение Telegram Web-сессии и списка уже обработанных уведомлений;
+- TGStat Callback и Telethon как дополнительные провайдеры.
 
-## Самый дешёвый запуск
+## Бесплатный автономный запуск
 
-### 1. Создайте бота
+### 1. Создайте бота уведомлений
 
-Создайте бота через `@BotFather`, откройте с ним диалог и узнайте свой numeric Telegram ID.
+Создайте бота через `@BotFather`, откройте с ним диалог и узнайте свой numeric
+Telegram ID.
 
-### 2. Заполните окружение
+### 2. Настройте мониторинг Telemetr
+
+Создайте одно отслеживание и подключите уведомления к
+`@telemetr_notif_bot`. Используйте готовые файлы:
+
+- `config/telemetr_keywords.txt`;
+- `config/telemetr_minus_words.txt`;
+- [`docs/TELEMETR_SETUP.md`](docs/TELEMETR_SETUP.md).
+
+Бесплатный Public API Telemetr не используется в основном потоке: тестовый
+аккаунт читает только верифицированные источники, а нужные фриланс-чаты обычно
+не верифицированы. Telegram Web читает уже готовую ленту мониторинга из одного
+диалога и не расходует API-квоту Telemetr.
+
+### 3. Подготовьте `.env`
 
 ```bash
 cp .env.example .env
+nano .env
 ```
 
-Для бесплатного режима достаточно:
+Минимальная конфигурация:
 
 ```env
 BOT_TOKEN=...
 ADMIN_IDS=123456789
 NOTIFY_CHAT_ID=123456789
-SOURCE_PROVIDERS=manual
+
+SOURCE_PROVIDERS=telegram_web
+TELEGRAM_WEB_PROFILE_DIR=/data/telegram-web
+TELEGRAM_WEB_TARGET_CHAT=telemetr_notif_bot
+TELEGRAM_WEB_POLL_SECONDS=15
+TELEGRAM_WEB_IMPORT_EXISTING=false
+
+DATABASE_URL=postgresql+asyncpg://parcertg:parcertg@db:5432/parcertg
+MIN_LEAD_SCORE=65
 ```
 
-### 3. Запустите
+### 4. Соберите образ
 
 ```bash
-docker compose up -d --build
+docker compose build --pull app
+```
+
+### 5. Один раз авторизуйте Telegram Web
+
+Основной контейнер должен быть остановлен, чтобы браузерный профиль не был
+занят:
+
+```bash
+docker compose stop app
+docker compose run --rm app python -m scripts.telegram_web_login
+```
+
+QR-код придёт в вашего бота. На телефоне откройте:
+
+```text
+Telegram → Настройки → Устройства → Подключить устройство
+```
+
+Отсканируйте QR-код. После подтверждения запустите сервис:
+
+```bash
+docker compose up -d app
 docker compose logs -f app
 ```
 
-### 4. Настройте Telemetrio
+Полная инструкция:
+[`docs/TELEGRAM_WEB_SETUP.md`](docs/TELEGRAM_WEB_SETUP.md).
 
-Используйте готовые списки:
+### 6. Проверка
 
-- `config/telemetr_keywords.txt`;
-- `config/telemetr_minus_words.txt`;
-- инструкция: [`docs/TELEMETR_SETUP.md`](docs/TELEMETR_SETUP.md).
+В боте:
 
-Перешлите найденное уведомление из бота Telemetrio в ParcerTG. Сообщение будет оценено, сохранено и дедуплицировано. Низкий балл вернётся как диагностический ответ, а горячий лид — как полноценная карточка.
+```text
+/providers
+```
+
+Ожидаемый источник:
+
+```text
+telegram_web
+```
+
+При первом запуске старая история уведомлений отмечается как прочитанная. Новые
+уведомления Telemetr автоматически проходят через скоринг и дедупликацию.
 
 ## Команды бота
 
@@ -76,39 +143,26 @@ docker compose logs -f app
 /providers   активные провайдеры
 ```
 
-Также можно просто переслать сообщение в бота — отдельная команда не нужна.
+Ручная пересылка остаётся запасным способом, даже когда включён
+`telegram_web`.
 
 ## TGStat Callback
 
-TGStat Callback нужен только после проверки качества лидов. Он позволяет получать события из каналов и чатов на собственный URL.
-
-1. Откройте внешний HTTPS-доступ к порту `8080`.
-2. Добавьте в `.env`:
+TGStat Callback нужен после проверки качества лидов, когда потребуется более
+стабильный официальный webhook.
 
 ```env
-SOURCE_PROVIDERS=manual,tgstat
+SOURCE_PROVIDERS=telegram_web,tgstat
 TGSTAT_TOKEN=...
 TGSTAT_WEBHOOK_SECRET=длинная_случайная_строка
 PUBLIC_BASE_URL=https://leads.example.com
 ```
 
-3. Перезапустите контейнер.
-4. Получите код подтверждения callback:
+Настройка:
 
 ```bash
 docker compose run --rm app python -m scripts.tgstat_setup set-url
-```
-
-5. Добавьте показанный `TGSTAT_VERIFY_CODE` в `.env`, перезапустите и повторите `set-url`.
-6. Создайте одну подписку по готовому составному запросу:
-
-```bash
 docker compose run --rm app python -m scripts.tgstat_setup subscribe
-```
-
-7. Проверьте состояние:
-
-```bash
 docker compose run --rm app python -m scripts.tgstat_setup status
 ```
 
@@ -116,10 +170,10 @@ docker compose run --rm app python -m scripts.tgstat_setup status
 
 ## Telethon — необязательный резерв
 
-Telethon не требуется для бесплатного ручного режима и TGStat. Включайте его только если получите собственные MTProto-реквизиты:
+Telethon включается только после получения собственных MTProto-реквизитов:
 
 ```env
-SOURCE_PROVIDERS=manual,telethon
+SOURCE_PROVIDERS=telegram_web,telethon
 TELEGRAM_API_ID=...
 TELEGRAM_API_HASH=...
 TELEGRAM_SESSION=...
@@ -132,8 +186,6 @@ CHAT_SOURCES_FILE=config/sources.txt
 docker compose run --rm app python -m scripts.generate_session
 ```
 
-Аккаунт должен состоять в нужных группах. Недоступные источники логируются и не останавливают остальные.
-
 ## Скоринг
 
 По умолчанию уведомление приходит при `MIN_LEAD_SCORE=65`.
@@ -143,20 +195,25 @@ docker compose run --rm app python -m scripts.generate_session
 - +18 — требуется разработка, интеграция или автоматизация;
 - +15 — указан бюджет или готовность платить;
 - +10 — есть срочность;
-- отрицательные баллы — резюме, реклама услуг, курсы, бартер, работа за долю или только в офисе.
+- отрицательные баллы — резюме, реклама услуг, курсы, бартер, работа за долю
+  или только в офисе.
 
 Правила находятся в `app/scoring.py`.
 
 ## Архитектура
 
 ```text
-Telemetrio alert ──forward──┐
-TGStat Callback ──webhook───┼──> LeadProcessor ──> scoring ──> dedup ──> PostgreSQL
-Telethon chats ──MTProto────┘                                      │
-                                                                    └──> aiogram bot
-```
+Telemetr monitoring
+        ↓
+@telemetr_notif_bot
+        ↓ Telegram Web + persistent Chromium profile
+TelegramWebCollector
+        ↓
+LeadProcessor → scoring → dedup → PostgreSQL → aiogram bot
 
-Все источники проходят через единый `LeadProcessor`, поэтому дубли между Telemetrio, TGStat и Telethon объединяются.
+TGStat Callback ──webhook──┐
+Telethon chats ──MTProto───┴──> тот же LeadProcessor
+```
 
 ## Локальная разработка
 
@@ -168,16 +225,20 @@ pytest
 ruff check .
 ```
 
-Для SQLite:
+Для локального запуска Chromium вне Docker дополнительно выполните:
 
-```env
-DATABASE_URL=sqlite+aiosqlite:///./parcertg.db
+```bash
+python -m playwright install chromium
 ```
 
 ## Безопасность
 
 - сервис не пишет заказчикам автоматически;
-- webhook защищён длинным секретом в URL;
-- не публикуйте `.env`, `TGSTAT_TOKEN`, `TELEGRAM_SESSION` и `api_hash`;
-- не используйте один `StringSession` одновременно в нескольких экземплярах;
-- соблюдайте правила групп, условия поставщиков данных и требования к персональным данным.
+- volume `telegram_web_data` содержит активную пользовательскую сессию;
+- не публикуйте `.env`, browser profile, `TGSTAT_TOKEN`, `TELEGRAM_SESSION` и
+  `api_hash`;
+- не запускайте одновременно два Chromium-процесса с одним profile directory;
+- Telegram Web-интеграция зависит от интерфейса сайта и может потребовать
+  обновления селекторов после крупных изменений;
+- соблюдайте правила групп, условия поставщиков данных и требования к
+  персональным данным.

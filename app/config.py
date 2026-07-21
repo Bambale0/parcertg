@@ -7,7 +7,9 @@ from urllib.parse import urljoin
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ALLOWED_SOURCE_PROVIDERS = frozenset({"manual", "telethon", "tgstat"})
+ALLOWED_SOURCE_PROVIDERS = frozenset(
+    {"manual", "telegram_web", "telethon", "tgstat"}
+)
 
 
 class Settings(BaseSettings):
@@ -23,8 +25,16 @@ class Settings(BaseSettings):
     admin_ids: str
     notify_chat_id: int | None = None
 
-    # Cheap-by-default mode: Telemetr/TGStat alerts are forwarded to the bot manually.
+    # Cheap-by-default modes: manual forwarding or autonomous Telegram Web reader.
     source_providers: str = "manual"
+
+    # Autonomous reader for Telemetr monitoring alerts in Telegram Web.
+    telegram_web_profile_dir: Path = Path("/data/telegram-web")
+    telegram_web_target_chat: str = "telemetr_notif_bot"
+    telegram_web_url: str = "https://web.telegram.org/k/"
+    telegram_web_poll_seconds: int = Field(default=15, ge=5, le=3600)
+    telegram_web_login_timeout_seconds: int = Field(default=600, ge=60, le=3600)
+    telegram_web_import_existing: bool = False
 
     # Optional MTProto/Telethon provider.
     telegram_api_id: int | None = None
@@ -74,6 +84,22 @@ class Settings(BaseSettings):
         if not value:
             raise ValueError("must not be blank")
         return value
+
+    @field_validator("telegram_web_target_chat")
+    @classmethod
+    def normalize_telegram_web_target_chat(cls, value: str) -> str:
+        normalized = value.strip().removeprefix("@")
+        if not normalized:
+            raise ValueError("must not be blank")
+        return normalized
+
+    @field_validator("telegram_web_url")
+    @classmethod
+    def validate_telegram_web_url(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized.startswith("https://"):
+            raise ValueError("must be an HTTPS URL")
+        return normalized
 
     @model_validator(mode="after")
     def validate_provider_configuration(self) -> Settings:
