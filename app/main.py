@@ -11,6 +11,7 @@ from app.config import Settings
 from app.database import Database
 from app.ingestion import LeadProcessor
 from app.notifier import Notifier
+from app.telegram_web import TelegramWebCollector
 from app.web import TGStatWebhookServer
 
 
@@ -42,8 +43,22 @@ async def main() -> None:
     notifier = Notifier(settings, database, processor)
 
     collector: LeadCollector | None = None
+    telegram_web_collector: TelegramWebCollector | None = None
     tgstat_server: TGStatWebhookServer | None = None
     tasks = [asyncio.create_task(notifier.run(), name="notification-bot")]
+
+    if "telegram_web" in settings.parsed_source_providers:
+        telegram_web_collector = TelegramWebCollector(
+            settings,
+            processor,
+            notifier,
+        )
+        tasks.append(
+            asyncio.create_task(
+                telegram_web_collector.run(),
+                name="telegram-web-collector",
+            )
+        )
 
     if "telethon" in settings.parsed_source_providers:
         collector = LeadCollector(settings, processor, notifier)
@@ -71,6 +86,8 @@ async def main() -> None:
     finally:
         if tgstat_server is not None:
             await tgstat_server.close()
+        if telegram_web_collector is not None:
+            await telegram_web_collector.close()
         if collector is not None:
             await collector.close()
         for task in tasks:
