@@ -11,7 +11,7 @@ from app.config import Settings
 from app.database import Database
 from app.ingestion import LeadProcessor
 from app.notifier import Notifier
-from app.telegram_web import TelegramWebCollector
+from app.telegram_web_v2 import TelegramWebCollector
 from app.web import TGStatWebhookServer
 
 
