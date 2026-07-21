@@ -167,10 +167,19 @@ class Notifier:
             if not self._is_admin(message.from_user.id if message.from_user else None):
                 return
             providers = ", ".join(sorted(self.settings.parsed_source_providers))
+            if "telegram_web" in self.settings.parsed_source_providers:
+                mode_text = (
+                    "Автопоиск включён: сохранённая Telegram Web-сессия читает "
+                    f"новые уведомления @{self.settings.telegram_web_target_chat}."
+                )
+            else:
+                mode_text = (
+                    "Ручной режим: перешлите уведомление Telemetr — бот оценит, "
+                    "удалит дубль и сохранит горячий лид."
+                )
             await message.answer(
                 "<b>ParcerTG запущен</b>\n\n"
-                "Бесплатный режим: перешлите сюда уведомление Telemetr — "
-                "бот оценит, удалит дубль и сохранит горячий лид.\n\n"
+                f"{mode_text}\n\n"
                 "Команды:\n"
                 "• /check текст — только оценить\n"
                 "• /lead текст — сохранить и обработать\n"
