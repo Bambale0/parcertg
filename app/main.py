@@ -9,7 +9,9 @@ import structlog
 from app.collector import LeadCollector
 from app.config import Settings
 from app.database import Database
+from app.ingestion import LeadProcessor
 from app.notifier import Notifier
+from app.web import TGStatWebhookServer
 
 
 def configure_logging(level: str) -> None:
@@ -36,15 +38,30 @@ async def main() -> None:
 
     database = Database(settings.database_url)
     await database.create_schema()
-    notifier = Notifier(settings, database)
-    collector = LeadCollector(settings, database, notifier)
+    processor = LeadProcessor(settings, database)
+    notifier = Notifier(settings, database, processor)
 
-    tasks = [
-        asyncio.create_task(notifier.run(), name="notification-bot"),
-        asyncio.create_task(collector.run(), name="telegram-collector"),
-    ]
+    collector: LeadCollector | None = None
+    tgstat_server: TGStatWebhookServer | None = None
+    tasks = [asyncio.create_task(notifier.run(), name="notification-bot")]
+
+    if "telethon" in settings.parsed_source_providers:
+        collector = LeadCollector(settings, processor, notifier)
+        tasks.append(
+            asyncio.create_task(collector.run(), name="telegram-collector")
+        )
+
+    if "tgstat" in settings.parsed_source_providers:
+        tgstat_server = TGStatWebhookServer(settings, processor, notifier)
+        tasks.append(
+            asyncio.create_task(tgstat_server.run(), name="tgstat-webhook")
+        )
+
     try:
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        done, pending = await asyncio.wait(
+            tasks,
+            return_when=asyncio.FIRST_EXCEPTION,
+        )
         for task in done:
             exception = task.exception()
             if exception:
@@ -52,11 +69,14 @@ async def main() -> None:
         for task in pending:
             task.cancel()
     finally:
+        if tgstat_server is not None:
+            await tgstat_server.close()
+        if collector is not None:
+            await collector.close()
         for task in tasks:
             if not task.done():
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        await collector.close()
         await notifier.close()
         await database.close()
 
