@@ -28,9 +28,9 @@ class Settings(BaseSettings):
     # Cheap-by-default modes: manual forwarding or autonomous Telegram Web reader.
     source_providers: str = "manual"
 
-    # Autonomous reader for Telemetr monitoring alerts in Telegram Web.
+    # Autonomous reader for Telemetrio monitoring alerts in Telegram Web.
     telegram_web_profile_dir: Path = Path("/data/telegram-web")
-    telegram_web_target_chat: str = "telemetr_notif_bot"
+    telegram_web_target_chat: str = "TelemetrioAlertBot"
     telegram_web_url: str = "https://web.telegram.org/k/"
     telegram_web_poll_seconds: int = Field(default=15, ge=5, le=3600)
     telegram_web_login_timeout_seconds: int = Field(default=600, ge=60, le=3600)

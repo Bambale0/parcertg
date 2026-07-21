@@ -1,0 +1,92 @@
+name: Deploy production
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production server
+    if: >-
+      ${{
+        vars.AUTODEPLOY_ENABLED == 'true' &&
+        (
+          github.event_name == 'workflow_dispatch' ||
+          (
+            github.event.workflow_run.conclusion == 'success' &&
+            github.event.workflow_run.event == 'push' &&
+            github.event.workflow_run.head_branch == 'main'
+          )
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER || 'root' }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/root/parcertg' }}
+      EXPECTED_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+    steps:
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${DEPLOY_HOST:?Missing production secret DEPLOY_HOST}"
+          : "${DEPLOY_SSH_PRIVATE_KEY:?Missing production secret DEPLOY_SSH_PRIVATE_KEY}"
+          : "${DEPLOY_KNOWN_HOSTS:?Missing production secret DEPLOY_KNOWN_HOSTS}"
+          : "${DEPLOY_USER:?Missing production variable DEPLOY_USER}"
+          : "${DEPLOY_PORT:?Missing production variable DEPLOY_PORT}"
+          : "${DEPLOY_PATH:?Missing production variable DEPLOY_PATH}"
+          : "${EXPECTED_SHA:?Unable to resolve deployment commit SHA}"
+
+      - name: Check out tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Deploy tested commit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          printf -v remote_command \
+            'DEPLOY_PATH=%q bash -s -- %q' \
+            "$DEPLOY_PATH" "$EXPECTED_SHA"
+
+          ssh \
+            -i "$HOME/.ssh/id_ed25519" \
+            -p "$DEPLOY_PORT" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "$remote_command" \
+            < scripts/deploy.sh
