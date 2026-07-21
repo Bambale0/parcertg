@@ -44,6 +44,15 @@ def test_current_telemetrio_alert_bot_is_the_default() -> None:
     assert settings.telegram_web_target_chat == "TelemetrioAlertBot"
 
 
+def test_legacy_telemetrio_alert_bot_is_migrated() -> None:
+    settings = make_settings(
+        source_providers="telegram_web",
+        telegram_web_target_chat="telemetr_notif_bot",
+    )
+
+    assert settings.telegram_web_target_chat == "TelemetrioAlertBot"
+
+
 def test_telethon_mode_requires_mtproto_credentials() -> None:
     with pytest.raises(ValidationError, match="TELEGRAM_API_ID"):
         make_settings(source_providers="telethon")
