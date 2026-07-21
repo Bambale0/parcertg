@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
 from time import monotonic
 
@@ -8,15 +9,30 @@ from aiogram.types import BufferedInputFile
 from playwright.async_api import async_playwright
 
 from app.config import Settings
-from app.telegram_web import (
+from app.telegram_web import launch_telegram_web_context
+from app.telegram_web_v2 import (
     capture_telegram_web_login_image,
-    launch_telegram_web_context,
+    reset_telegram_web_browser_profile,
     telegram_web_is_logged_in,
 )
 
 
-async def main_async() -> None:
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Authorize the Telegram Web profile")
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="remove the stored browser session before showing the QR code",
+    )
+    return parser.parse_args()
+
+
+async def main_async(reset: bool = False) -> None:
     settings = Settings()  # type: ignore[call-arg]
+    if reset:
+        reset_telegram_web_browser_profile(settings.telegram_web_profile_dir)
+        print("Stored Telegram Web browser session was reset.")
+
     bot = Bot(settings.bot_token)
     playwright = await async_playwright().start()
     context = await launch_telegram_web_context(settings, playwright)
@@ -28,13 +44,16 @@ async def main_async() -> None:
             wait_until="domcontentloaded",
             timeout=60_000,
         )
-        await page.wait_for_timeout(3000)
+        await page.wait_for_timeout(5000)
         if await telegram_web_is_logged_in(page):
             await bot.send_message(
                 settings.target_chat_id,
-                "✅ Telegram Web уже авторизован. Можно запускать ParcerTG.",
+                (
+                    "✅ Telegram Web действительно авторизован: "
+                    "обнаружен интерфейс списка чатов."
+                ),
             )
-            print("Telegram Web is already authorized.")
+            print("Telegram Web is already authorized and the chat list is visible.")
             return
 
         deadline = monotonic() + settings.telegram_web_login_timeout_seconds
@@ -43,7 +62,10 @@ async def main_async() -> None:
             if await telegram_web_is_logged_in(page):
                 await bot.send_message(
                     settings.target_chat_id,
-                    "✅ Telegram Web успешно авторизован. Запускайте ParcerTG.",
+                    (
+                        "✅ Telegram Web успешно авторизован. "
+                        "Запускайте ParcerTG."
+                    ),
                 )
                 print("Telegram Web authorization completed.")
                 return
@@ -57,13 +79,13 @@ async def main_async() -> None:
                     caption=(
                         "🔐 <b>Вход в Telegram Web</b>\n\n"
                         "Откройте Telegram на телефоне:\n"
-                        "Настройки → Устройства → Подключить устройство, "
-                        "затем отсканируйте QR-код.\n\n"
-                        "Код обновляется автоматически примерно раз в минуту."
+                        "Настройки → Устройства → "
+                        "Подключить устройство, затем отсканируйте QR-код.\n\n"
+                        "При отсутствии QR прислан полный экран страницы входа."
                     ),
                 )
                 last_qr_sent = now
-                print("A fresh login image was sent to the notification bot.")
+                print("A fresh Telegram Web login image was sent to the bot.")
 
             await asyncio.sleep(2)
 
@@ -71,7 +93,7 @@ async def main_async() -> None:
             settings.target_chat_id,
             (
                 "❌ Время ожидания входа Telegram Web истекло. "
-                "Запустите команду ещё раз."
+                "Запустите команду ещё раз с --reset."
             ),
         )
         raise TimeoutError("Telegram Web login timed out")
@@ -82,7 +104,8 @@ async def main_async() -> None:
 
 
 def main() -> None:
-    asyncio.run(main_async())
+    args = parse_args()
+    asyncio.run(main_async(reset=args.reset))
 
 
 if __name__ == "__main__":
