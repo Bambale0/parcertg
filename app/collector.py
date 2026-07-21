@@ -104,21 +104,29 @@ class LeadCollector:
                 "TELEGRAM_SESSION is invalid or expired. Run scripts.generate_session again."
             )
 
+        configured_sources = self.settings.parsed_chat_sources
         resolved_chats = []
-        for source in self.settings.parsed_chat_sources:
+        unavailable_sources: list[str | int] = []
+        for source in configured_sources:
             try:
                 resolved_chats.append(await self.client.get_input_entity(source))
             except Exception:
+                unavailable_sources.append(source)
                 logger.exception("chat_source_unavailable", source=source)
 
         if not resolved_chats:
-            raise RuntimeError("No CHAT_SOURCES could be resolved by the Telegram account")
+            raise RuntimeError("No Telegram sources could be resolved by the Telegram account")
 
         self.client.add_event_handler(
             self._handle_message,
             events.NewMessage(chats=resolved_chats, incoming=True),
         )
-        logger.info("collector_started", chats=len(resolved_chats))
+        logger.info(
+            "collector_started",
+            configured=len(configured_sources),
+            resolved=len(resolved_chats),
+            unavailable=len(unavailable_sources),
+        )
         await self.client.run_until_disconnected()
 
     async def close(self) -> None:
