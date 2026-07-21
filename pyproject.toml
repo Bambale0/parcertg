@@ -1,7 +1,7 @@
 [project]
 name = "parcertg"
-version = "0.2.0"
-description = "Cost-first Telegram lead hunter with manual, TGStat and Telethon providers"
+version = "0.3.0"
+description = "Cost-first Telegram lead hunter with autonomous Telegram Web ingestion"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -15,6 +15,7 @@ dependencies = [
   "fastapi==0.139.2",
   "uvicorn==0.51.0",
   "httpx==0.28.1",
+  "playwright==1.61.0",
 ]
 
 [project.optional-dependencies]
@@ -28,6 +29,7 @@ dev = [
 parcertg = "app.main:run"
 parcertg-session = "scripts.generate_session:main"
 parcertg-tgstat = "scripts.tgstat_setup:main"
+parcertg-web-login = "scripts.telegram_web_login:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
