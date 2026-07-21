@@ -169,4 +169,8 @@ def score_message(text: str) -> ScoreResult:
         score += 5
         reasons.append("+5: Подробное описание")
 
-    return ScoreResult(score=max(0, min(100, score)), reasons=tuple(reasons), normalized_text=normalized)
+    return ScoreResult(
+        score=max(0, min(100, score)),
+        reasons=tuple(reasons),
+        normalized_text=normalized,
+    )
