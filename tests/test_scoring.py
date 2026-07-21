@@ -12,6 +12,22 @@ def test_hot_target_lead_scores_above_threshold() -> None:
     assert any("целевым стеком" in reason for reason in result.reasons)
 
 
+def test_product_request_without_developer_keyword_is_hot_lead() -> None:
+    text = (
+        "Категория: Скрипты, боты и mini apps. Разработка ИИ. "
+        "Добрый день, хочу бота, который бы анализировал все товары на сайте "
+        "во всех разделах и сравнивал их цены с рынком, гугля или другим способом. "
+        "Бюджет 25000 ₽."
+    )
+
+    result = score_message(text)
+
+    assert result.score >= 65
+    assert any("потребность в цифровом продукте" in reason for reason in result.reasons)
+    assert any("конкретная задача" in reason for reason in result.reasons)
+    assert any("бюджет" in reason.lower() for reason in result.reasons)
+
+
 def test_resume_is_rejected() -> None:
     text = "Ищу работу Python-разработчиком. Рассматриваю вакансии, вот мое резюме."
     assert score_message(text).score < 30
