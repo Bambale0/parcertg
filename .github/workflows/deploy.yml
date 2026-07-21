@@ -54,6 +54,11 @@ jobs:
           : "${DEPLOY_PATH:?Missing production variable DEPLOY_PATH}"
           : "${EXPECTED_SHA:?Unable to resolve deployment commit SHA}"
 
+      - name: Check out tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+
       - name: Configure SSH
         shell: bash
         run: |
@@ -69,8 +74,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           printf -v remote_command \
-            'cd %q && DEPLOY_PATH=%q bash scripts/deploy.sh %q' \
-            "$DEPLOY_PATH" "$DEPLOY_PATH" "$EXPECTED_SHA"
+            'DEPLOY_PATH=%q bash -s -- %q' \
+            "$DEPLOY_PATH" "$EXPECTED_SHA"
 
           ssh \
             -i "$HOME/.ssh/id_ed25519" \
@@ -80,4 +85,5 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=15 \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "$remote_command"
+            "$remote_command" \
+            < scripts/deploy.sh
