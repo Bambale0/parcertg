@@ -1,237 +1,74 @@
-# ParcerTG — охотник за горячими лидами в Telegram
+# Telegram Lead Monitor
 
-ParcerTG принимает заявки из нескольких источников, локально оценивает их по
-прозрачным правилам, удаляет дубли и отправляет только подходящие лиды в личного
-Telegram-бота.
+> **Automated lead discovery pipeline** · Python · FastAPI · PostgreSQL · Playwright · aiogram · CI/CD
+>
+> Repository codename: `parcertg`.
 
-Проект запускается без `api_id` и `api_hash`. Основной бесплатный режим
-полностью автономный: Telemetrio ищет упоминания, `@TelemetrioAlertBot`
-присылает уведомления, а сохранённая Telegram Web-сессия сама забирает их в
-ParcerTG. Ручная пересылка не требуется.
+Telegram Lead Monitor collects potential development leads from several Telegram-related sources, scores them with transparent rules, removes duplicates and sends only relevant opportunities to a private Telegram bot.
 
-## Источники
+This project is a compact portfolio example of data ingestion, browser automation, scoring, deduplication and production deployment without requiring an LLM in the critical decision path.
 
-| Провайдер | Стоимость старта | Как работает |
-|---|---:|---|
-| `telegram_web` | 0 | Chromium читает новые уведомления `@TelemetrioAlertBot` |
-| `manual` | 0 | Ручная пересылка уведомлений или команда `/lead` |
-| `tgstat` | по тарифу Callback API | TGStat отправляет совпадения на FastAPI webhook |
-| `telethon` | 0 | Telegram-аккаунт напрямую слушает каталог из 100 источников |
+## What it does
 
-Провайдеры можно комбинировать, например:
+- Collects lead notifications from Telegram Web/Telemetrio.
+- Supports TGStat callbacks and Telethon as optional providers.
+- Scores leads from 0–100 with deterministic rules.
+- Prioritizes Python, FastAPI, Telegram, AI integration, CRM and automation work.
+- Filters service ads, resumes, barter and irrelevant offers.
+- Performs exact and fuzzy deduplication across providers.
+- Persists leads and decisions in PostgreSQL.
+- Sends actionable lead cards to an aiogram bot.
+- Tracks operator decisions such as accepted / not relevant / spam.
+- Runs automated CI and exact-SHA production deployment.
 
-```env
-SOURCE_PROVIDERS=telegram_web,manual
-```
-
-## Возможности
-
-- автономный бесплатный сбор уведомлений Telemetrio через Telegram Web;
-- rule-based scoring от 0 до 100 без передачи сообщений в LLM;
-- приоритет Python, FastAPI, Telegram-ботов, AI-интеграций, CRM, API и
-  автоматизации;
-- фильтрация резюме, рекламы услуг, обучения, бартера и работы «за процент»;
-- точная и fuzzy-дедупликация между разными провайдерами;
-- карточка лида с причинами оценки и ссылкой на оригинал;
-- кнопки «Взял в работу», «Не подходит» и «Спам»;
-- PostgreSQL в Docker и SQLite для локальной разработки;
-- сохранение Telegram Web-сессии и списка уже обработанных уведомлений;
-- TGStat Callback и Telethon как дополнительные провайдеры;
-- CI с Ruff, Pytest, compileall, Compose validation и production image build;
-- автодеплой проверенного commit SHA на сервер после успешного CI в `main`.
-
-## Бесплатный автономный запуск
-
-### 1. Создайте бота уведомлений
-
-Создайте бота через `@BotFather`, откройте с ним диалог и узнайте свой numeric
-Telegram ID.
-
-### 2. Настройте мониторинг Telemetrio
-
-Создайте одно отслеживание и подключите уведомления к
-`@TelemetrioAlertBot`. Используйте готовые файлы:
-
-- `config/telemetr_keywords.txt`;
-- `config/telemetr_minus_words.txt`;
-- [`docs/TELEMETR_SETUP.md`](docs/TELEMETR_SETUP.md).
-
-Бесплатный Public API Telemetrio не используется в основном потоке: тестовый
-аккаунт читает только верифицированные источники, а нужные фриланс-чаты обычно
-не верифицированы. Telegram Web читает готовую ленту мониторинга из одного
-диалога и не расходует API-квоту Telemetrio.
-
-### 3. Подготовьте `.env`
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-Минимальная конфигурация:
-
-```env
-BOT_TOKEN=...
-ADMIN_IDS=123456789
-NOTIFY_CHAT_ID=123456789
-
-SOURCE_PROVIDERS=telegram_web
-TELEGRAM_WEB_PROFILE_DIR=/data/telegram-web
-TELEGRAM_WEB_TARGET_CHAT=TelemetrioAlertBot
-TELEGRAM_WEB_POLL_SECONDS=15
-TELEGRAM_WEB_IMPORT_EXISTING=false
-
-DATABASE_URL=postgresql+asyncpg://parcertg:parcertg@db:5432/parcertg
-MIN_LEAD_SCORE=65
-```
-
-### 4. Соберите образ
-
-```bash
-docker compose build --pull app
-```
-
-### 5. Один раз авторизуйте Telegram Web
-
-Основной контейнер должен быть остановлен, чтобы браузерный профиль не был
-занят:
-
-```bash
-docker compose stop app
-docker compose run --rm app python -m scripts.telegram_web_login
-```
-
-QR-код придёт в вашего бота. На телефоне откройте:
-
-```text
-Telegram → Настройки → Устройства → Подключить устройство
-```
-
-Отсканируйте QR-код. После подтверждения запустите сервис:
-
-```bash
-docker compose up -d app
-docker compose logs -f app
-```
-
-Полная инструкция:
-[`docs/TELEGRAM_WEB_SETUP.md`](docs/TELEGRAM_WEB_SETUP.md).
-
-### 6. Проверка
-
-В боте:
-
-```text
-/providers
-```
-
-Ожидаемый источник:
-
-```text
-telegram_web
-```
-
-При первом запуске старая история уведомлений отмечается как прочитанная. Новые
-уведомления Telemetrio автоматически проходят через скоринг и дедупликацию.
-
-## Команды бота
-
-```text
-/start       справка
-/check TEXT  только оценить текст
-/lead TEXT   оценить и сохранить
-/lead        в ответ на сообщение — обработать его
-/stats       статистика за сегодня
-/providers   активные провайдеры
-```
-
-Ручная пересылка остаётся запасным способом, даже когда включён
-`telegram_web`.
-
-## CI и автодеплой
-
-Workflow `CI` запускается на pull request, push в `main` и вручную. Он проверяет
-код, тесты, deploy script и Docker Compose. При push в `main` дополнительно
-собирается production image.
-
-После успешного CI workflow `Deploy production` подключается к серверу по SSH и
-запускает `scripts/deploy.sh`. Скрипт разворачивает только тот commit SHA,
-который прошёл CI, не перезаписывает `.env` и блокирует параллельные деплои.
-
-Для подключения сервера требуется создать GitHub Environment `production` и
-добавить SSH secrets. Полная инструкция:
-[`docs/AUTODEPLOY.md`](docs/AUTODEPLOY.md).
-
-## TGStat Callback
-
-TGStat Callback нужен после проверки качества лидов, когда потребуется более
-стабильный официальный webhook.
-
-```env
-SOURCE_PROVIDERS=telegram_web,tgstat
-TGSTAT_TOKEN=...
-TGSTAT_WEBHOOK_SECRET=длинная_случайная_строка
-PUBLIC_BASE_URL=https://leads.example.com
-```
-
-Настройка:
-
-```bash
-docker compose run --rm app python -m scripts.tgstat_setup set-url
-docker compose run --rm app python -m scripts.tgstat_setup subscribe
-docker compose run --rm app python -m scripts.tgstat_setup status
-```
-
-Подробности: [`docs/TGSTAT_SETUP.md`](docs/TGSTAT_SETUP.md).
-
-## Telethon — необязательный резерв
-
-Telethon включается только после получения собственных MTProto-реквизитов:
-
-```env
-SOURCE_PROVIDERS=telegram_web,telethon
-TELEGRAM_API_ID=...
-TELEGRAM_API_HASH=...
-TELEGRAM_SESSION=...
-CHAT_SOURCES_FILE=config/sources.txt
-```
-
-Создание сессии:
-
-```bash
-docker compose run --rm app python -m scripts.generate_session
-```
-
-## Скоринг
-
-По умолчанию уведомление приходит при `MIN_LEAD_SCORE=65`.
-
-- +30 — явно ищет разработчика или исполнителя;
-- +20 — совпадение с целевым стеком;
-- +18 — требуется разработка, интеграция или автоматизация;
-- +15 — указан бюджет или готовность платить;
-- +10 — есть срочность;
-- отрицательные баллы — резюме, реклама услуг, курсы, бартер, работа за долю
-  или только в офисе.
-
-Правила находятся в `app/scoring.py`.
-
-## Архитектура
+## Architecture
 
 ```text
 Telemetrio monitoring
-        ↓
-@TelemetrioAlertBot
-        ↓ Telegram Web + persistent Chromium profile
-TelegramWebCollector
-        ↓
-LeadProcessor → scoring → dedup → PostgreSQL → aiogram bot
-
-TGStat Callback ──webhook──┐
-Telethon chats ──MTProto───┴──> тот же LeadProcessor
+        |
+        v
+Telegram alert chat
+        |
+        v
+Playwright / Telegram Web collector
+        |
+        +------------------------+
+                                 v
+TGStat callback ------------> LeadProcessor
+Telethon sources ----------->     |
+                                 +--> scoring
+                                 +--> deduplication
+                                 +--> PostgreSQL
+                                 +--> Telegram notification bot
 ```
 
-## Локальная разработка
+All providers converge on the same `LeadProcessor`, so provider-specific transport is separated from scoring and persistence.
+
+## Why deterministic scoring
+
+The main ranking path intentionally does not require an LLM. Rules remain:
+
+- inspectable;
+- cheap to execute;
+- deterministic;
+- easy to tune;
+- safe from prompt-injection-style content in scraped messages.
+
+The default threshold can be configured with `MIN_LEAD_SCORE`.
+
+## Stack
+
+| Area | Technology |
+| --- | --- |
+| Backend | Python, FastAPI |
+| Notifications | aiogram |
+| Browser automation | Playwright / Chromium |
+| Database | PostgreSQL, SQLite for local development |
+| Optional sources | TGStat Callback API, Telethon |
+| Quality | Ruff, pytest, compileall, Compose validation |
+| Delivery | Docker, GitHub Actions, exact-SHA deployment |
+
+## Local development
 
 ```bash
 python -m venv .venv
@@ -241,21 +78,25 @@ pytest
 ruff check .
 ```
 
-Для локального запуска Chromium вне Docker дополнительно выполните:
+For the browser collector:
 
 ```bash
 python -m playwright install chromium
 ```
 
-## Безопасность
+## Production behavior
 
-- сервис не пишет заказчикам автоматически;
-- volume `telegram_web_data` содержит активную пользовательскую сессию;
-- не публикуйте `.env`, browser profile, SSH private key, `TGSTAT_TOKEN`,
-  `TELEGRAM_SESSION` и `api_hash`;
-- не запускайте одновременно два Chromium-процесса с одним profile directory;
-- deploy workflow использует `StrictHostKeyChecking=yes` и production secrets;
-- Telegram Web-интеграция зависит от интерфейса сайта и может потребовать
-  обновления селекторов после крупных изменений;
-- соблюдайте правила групп, условия поставщиков данных и требования к
-  персональным данным.
+The deployment workflow builds and verifies the candidate commit before deploying it. The deploy script keeps `.env` outside source control and blocks parallel deployments.
+
+The browser profile contains an authenticated Telegram session and is treated as secret runtime data; it is never intended for source control.
+
+## Security boundaries
+
+- The service does **not** automatically message customers.
+- `.env`, browser profiles, SSH keys and Telegram sessions must remain outside Git.
+- The same browser profile must not be opened by multiple Chromium processes.
+- External provider terms and personal-data requirements must be respected.
+
+## Portfolio note
+
+This project demonstrates a practical automation pipeline: multiple ingestion adapters, browser automation, deterministic classification, fuzzy deduplication, persistence and operational deployment in a relatively small codebase.
